@@ -23,6 +23,12 @@ sqlparser = "0.37"
 async-trait = "0.1"
 chrono = "0.4"
 tracing = "0.1.37"
+rustls = "0.21.7"
+webpki-roots = "0.25.2"
+tokio-rustls = "0.24.1"
+rustls-pemfile = "1.0.3"
+futures-util = "0.3.28"
+rustls-native-certs = "0.6.3"
 
 # Cannot nest Workspaces
 # [workspace]

@@ -318,6 +318,7 @@ impl<E: Engine> Connection<E> {
 	/// This function only returns when the connection is closed (either gracefully or due to an error).
 	pub async fn run(&mut self, stream: impl AsyncRead + AsyncWrite + Unpin) -> Result<(), ConnectionError> {
 		let mut framed = Framed::new(stream, ConnectionCodec::new());
+		println!("RUNNING");
 		loop {
 			let new_state = match self.step(&mut framed).await {
 				Ok(Some(state)) => state,
