@@ -177,7 +177,7 @@ pub async fn run_with_tls_over_tcp<E: Engine>(bind: BindOptions, engine_func: En
 		.with_safe_defaults()
 		.with_no_client_auth()
 		.with_single_cert(certs, key)
-		.unwrap();
+		.map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
 	let acceptor = TlsAcceptor::from(Arc::new(config));
 
@@ -187,12 +187,25 @@ pub async fn run_with_tls_over_tcp<E: Engine>(bind: BindOptions, engine_func: En
 		let (stream, _) = listener.accept().await?;
         let acceptor = acceptor.clone();
 
+		println!("TLSAcceptor");
+
         let engine_func = engine_func.clone();
 
 		let future = async move {
-			let stream = acceptor.accept(stream).await?;
+			println!("Connection::new");
 			let mut conn = Connection::new(engine_func().await);
+			println!("//Connection::new");
+
+
+			println!("TLSAcceptor.accept");
+			let stream = acceptor.accept(stream).await?;
+			println!("//TLSAcceptor.accept");
+
+
+			println!("Connection.run");
 			conn.run(stream).await.unwrap();
+			println!("//Connection.run");
+
 			Ok(()) as io::Result<()>
 		};
 
