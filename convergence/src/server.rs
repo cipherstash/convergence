@@ -4,12 +4,13 @@ use crate::connection::{Connection, ConnectionError};
 use crate::engine::Engine;
 use crate::protocol::ProtocolError;
 use std::fs::{self, File};
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Read};
 use std::pin::Pin;
 use std::sync::Arc;
-use rustls::{Certificate, PrivateKey, ServerConfig};
 use tokio::net::{TcpListener, UnixListener};
-use tokio_rustls::TlsAcceptor;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use native_tls::{TlsConnector, Identity, TlsAcceptor};
+
 
 /// Controls how servers bind to local network resources.
 #[derive(Default)]
@@ -139,27 +140,21 @@ pub async fn run_with_socket<E: Engine>(bind: BindOptions, engine_func: EngineFu
 
 
 
-// Load certificate from file path
-fn load_certs(filename: &str) -> Vec<Certificate> {
-	tracing::debug!("Loading certificate from {}", filename);
-	let certfile = File::open(filename).unwrap();
-	let mut reader = BufReader::new(certfile);
+fn load_identity(certificate_path: String, private_key_path: String) -> Identity {
+	tracing::debug!("Loading certificate from {}", certificate_path);
+	let mut certificate_file = File::open(certificate_path).unwrap();
 
-	let certs = rustls_pemfile::certs(&mut reader).unwrap();
-    certs.into_iter().map(Certificate).collect()
+    let mut certs = vec![];
+    certificate_file.read_to_end(&mut certs).unwrap();
+
+
+	tracing::debug!("Loading private key from {}", private_key_path);
+	let mut key_file = File::open(private_key_path).unwrap();
+	let mut key = vec![];
+    key_file.read_to_end(&mut key).unwrap();
+
+    Identity::from_pkcs8(&certs, &key).unwrap()
 }
-
-// Load private keyfrom file path
-fn load_private_key(filename: &str) -> PrivateKey {
-	tracing::debug!("Loading private key from {}", filename);
-
-	let certfile = File::open(filename).unwrap();
-	let mut reader = BufReader::new(certfile);
-
-	let key = rustls_pemfile::pkcs8_private_keys(&mut reader).unwrap().remove(0);
-	PrivateKey(key)
-}
-
 
 /// Starts a server using a function responsible for producing engine instances and set of bind options.
 ///
@@ -170,51 +165,72 @@ pub async fn run_with_tls_over_tcp<E: Engine>(bind: BindOptions, engine_func: En
 	let certificate_path = bind.certificate_path.unwrap();
 	let private_key_path = bind.private_key_path.unwrap();
 
-	let certs = load_certs(&certificate_path); // Replace with the path to your certificate
-	let key = load_private_key(&private_key_path); // Replace with the path to your private key
+	tracing::debug!("Load identity");
+	let identity  = load_identity(certificate_path , private_key_path); // Replace with the path to your private key
 
-	let config = ServerConfig::builder()
-		.with_safe_defaults()
-		.with_no_client_auth()
-		.with_single_cert(certs, key)
-		.map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-
-	let acceptor = TlsAcceptor::from(Arc::new(config));
-
+	tracing::debug!("Create TcpListener");
 	let listener = TcpListener::bind((bind.addr, bind.port)).await?;
 
-	loop {
-		let (stream, _) = listener.accept().await?;
-        let acceptor = acceptor.clone();
+	tracing::debug!("Create TlsAcceptor");
+	let config = native_tls::TlsAcceptor::builder(identity).build().unwrap();
+	let acceptor = tokio_native_tls::TlsAcceptor::from(config);
 
-		println!("TLSAcceptor");
+	loop {
+		let (stream, client_addr) = listener.accept().await?;
+		let acceptor = acceptor.clone();
+
+		tracing::debug!("Accept Connection from {}", client_addr);
 
         let engine_func = engine_func.clone();
 
-		let future = async move {
-			println!("Connection::new");
-			let mut conn = Connection::new(engine_func().await);
-			println!("//Connection::new");
-
-
-			println!("TLSAcceptor.accept");
-			let stream = acceptor.accept(stream).await?;
-			println!("//TLSAcceptor.accept");
-
-
-			println!("Connection.run");
-			conn.run(stream).await.unwrap();
-			println!("//Connection.run");
-
-			Ok(()) as io::Result<()>
-		};
-
 		tokio::spawn(async move {
-            if let Err(err) = future.await {
-				println!("!!!! Error: {:?}", err);
-                eprintln!("{:?}", err);
+			tracing::debug!("SPAWN");
+			// let mut stream = acceptor.accept(stream).await.unwrap();
+
+			// let Ok(mut stream) = acceptor.accept(stream).await else {
+			// 	tracing::debug!("HELLO");
+			// 	return;
+			// };
+
+			match acceptor.accept(stream).await {
+                Ok(stream) => {
+					println!("!!!!!!!!!!!!!!!!!!!!!!!!!");
+					println!("Stream: {:?}", stream);
+                },
+                Err(e) => eprintln!("TLS: {}", e)
             }
-        });
+
+
+			tracing::debug!("//SPAWN");
+			// let mut conn = Connesction::new(engine_func().await);
+			// conn.run(stream).await.unwrap();
+		});
+
 	}
 }
 
+
+
+
+// let future = async move {
+// 	tracing::debug!("Connection::new");
+// 	let mut conn = Connection::new(engine_func().await);
+// 	tracing::debug!("//Connection::new");
+
+// 	tracing::debug!("TLSAcceptor.accept");
+// 	let mut stream = acceptor.accept(stream).await.expect("accept error");
+// 	tracing::debug!("//TLSAcceptor.accept");
+
+// 	tracing::debug!("Connection.run");
+// 	conn.run(stream).await.unwrap();
+// 	tracing::debug!("//Connection.run");
+
+// 	Ok(()) as io::Result<()>
+// };
+
+// tokio::spawn(async move {
+// 	if let Err(err) = future.await {
+// 		println!("!!!! Error: {:?}", err);
+// 		eprintln!("{:?}", err);
+// 	}
+// });
