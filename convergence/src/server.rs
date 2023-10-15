@@ -13,7 +13,7 @@ use native_tls::{TlsConnector, Identity, TlsAcceptor};
 
 
 /// Controls how servers bind to local network resources.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct BindOptions {
 	addr: String,
 	port: u16,
@@ -47,9 +47,13 @@ impl BindOptions {
 		self
 	}
 
-	pub fn with_tls(mut self, certificate_path: impl Into<String>, private_key_path: impl Into<String>) -> Self {
-		self.certificate_path = Some(certificate_path.into());
-		self.private_key_path = Some(private_key_path.into());
+	pub fn with_tls(mut self, certificate_path: Option<impl Into<String>>, private_key_path: Option<impl Into<String>>) -> Self {
+		if let Some(certificate_path) = certificate_path {
+			self.certificate_path = Some(certificate_path.into());
+		}
+		if let Some(private_key_path) = private_key_path {
+			self.private_key_path = Some(private_key_path.into());
+		}
 		self
 	}
 
@@ -156,10 +160,62 @@ fn load_identity(certificate_path: String, private_key_path: String) -> Identity
     Identity::from_pkcs8(&certs, &key).unwrap()
 }
 
+
+// Test with wget https://localhost:{PORT}}
+pub async fn run_with_tls_over_tcp<E: Engine>(bind: BindOptions, _engine_func: EngineFunc<E>) -> std::io::Result<()> {
+	tracing::info!("Starting CipherStash on port {}", bind.port);
+	tracing::info!("Starting CipherStash on port {:?}", bind);
+
+	let certificate_path = bind.certificate_path.unwrap();
+	let private_key_path = bind.private_key_path.unwrap();
+
+	tracing::debug!("Load identity");
+	let identity  = load_identity(certificate_path , private_key_path); // Replace with the path to your private key
+
+	tracing::debug!("Create TcpListener");
+	let listener = TcpListener::bind((bind.addr, bind.port)).await?;
+
+	tracing::debug!("Create TlsAcceptor");
+	let config = native_tls::TlsAcceptor::builder(identity).build().unwrap();
+	let acceptor = tokio_native_tls::TlsAcceptor::from(config);
+
+	loop {
+		let (stream, client_addr) = listener.accept().await?;
+		let acceptor = acceptor.clone();
+
+		tracing::debug!("Accept Connection from {}", client_addr);
+
+		tokio::spawn(async move {
+			tracing::debug!("SPAWN");
+			let mut tls_stream = acceptor.accept(stream).await.expect("accept error");
+
+			let mut buf = [0; 1024];
+            let n = tls_stream
+                .read(&mut buf)
+                .await
+                .expect("failed to read data from socket");
+
+            if n == 0 {
+                return;
+            }
+            println!("read={}", unsafe {
+                String::from_utf8_unchecked(buf[0..n].into())
+            });
+            tls_stream
+                .write_all(&buf[0..n])
+                .await
+                .expect("failed to write data to socket");
+		});
+
+	}
+}
+
+
+
 /// Starts a server using a function responsible for producing engine instances and set of bind options.
 ///
 /// Does not return unless the server terminates entirely.
-pub async fn run_with_tls_over_tcp<E: Engine>(bind: BindOptions, engine_func: EngineFunc<E>) -> std::io::Result<()> {
+pub async fn _run_with_tls_over_tcp<E: Engine>(bind: BindOptions, engine_func: EngineFunc<E>) -> std::io::Result<()> {
 	tracing::info!("Starting CipherStash on port {}", bind.port);
 
 	let certificate_path = bind.certificate_path.unwrap();
@@ -199,8 +255,6 @@ pub async fn run_with_tls_over_tcp<E: Engine>(bind: BindOptions, engine_func: En
                 },
                 Err(e) => eprintln!("TLS: {}", e)
             }
-
-
 			tracing::debug!("//SPAWN");
 			// let mut conn = Connesction::new(engine_func().await);
 			// conn.run(stream).await.unwrap();
