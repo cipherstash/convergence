@@ -23,6 +23,7 @@ sqlparser = "0.37"
 async-trait = "0.1"
 chrono = "0.4"
 tracing = "0.1.37"
+lrumap = "0.1.0"
 
 # Cannot nest Workspaces
 # [workspace]

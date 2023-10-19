@@ -11,6 +11,9 @@ use std::collections::HashMap;
 // use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
+use lrumap::LruHashMap;
+
+const STATEMENT_CACHE_CAPACITY: usize = 9999;
 
 /// Describes an error that may or may not result in the termination of a connection.
 #[derive(thiserror::Error, Debug)]
@@ -53,22 +56,28 @@ struct BoundPortal<E: Engine> {
 pub struct Connection<E: Engine> {
 	engine: E,
 	state: ConnectionState,
-	statements: HashMap<String, PreparedStatement>,
+	statements: LruHashMap<String, PreparedStatement>,
 	portals: HashMap<String, Option<BoundPortal<E>>>,
 }
 
 impl<E: Engine> Connection<E> {
 	/// Create a new connection from an engine instance.
+	/// Creates statement cache with default capacity
 	pub fn new(engine: E) -> Self {
+		Self::new_with_capacity(engine, STATEMENT_CACHE_CAPACITY)
+	}
+
+	/// Create a new connection from an engine instance with statement cache
+	pub fn new_with_capacity(engine: E, capacity: usize) -> Self {
 		Self {
 			state: ConnectionState::Startup,
-			statements: HashMap::new(),
+			statements: LruHashMap::new(capacity),
 			portals: HashMap::new(),
 			engine,
 		}
 	}
 
-	fn prepared_statement(&self, name: &str) -> Result<&PreparedStatement, ConnectionError> {
+	fn prepared_statement(&mut self, name: &str) -> Result<&PreparedStatement, ConnectionError> {
 		Ok(self
 			.statements
 			.get(name)
@@ -165,7 +174,7 @@ impl<E: Engine> Connection<E> {
 							};
 
 							self.statements
-								.insert(parse.prepared_statement_name, prepared_statement);
+								.push(parse.prepared_statement_name, prepared_statement);
 						}
 						tracing::debug!("sent");
 						framed.send(ParseComplete).await?;
