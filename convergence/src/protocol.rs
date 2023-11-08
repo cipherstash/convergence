@@ -1049,9 +1049,7 @@ mod tests {
 			let message = codec.decode(&mut src).unwrap();
 
 			match message {
-				Some(ClientMessage::Terminate) => {
-					assert!(true)
-				}
+				Some(ClientMessage::Terminate) => {}
 				_ => assert_eq!(true, false, "Expected ClientMessage::Terminate"),
 			};
 		}
