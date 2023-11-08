@@ -353,7 +353,10 @@ impl<E: Engine> Connection<E> {
 		loop {
 			let new_state = match self.step(&mut framed).await {
 				Ok(Some(state)) => state,
-				Ok(None) => return Ok(()),
+				Ok(None) => {
+					tracing::info!("Connection::OK {}", self.id);
+					return Ok(());
+				}
 				Err(ConnectionError::ErrorResponse(err)) => {
 					tracing::warn!("ConnectionError::ErrorResponse {} {:?}", self.id, err);
 
