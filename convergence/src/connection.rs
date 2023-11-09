@@ -11,6 +11,7 @@ use std::collections::HashMap;
 // use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
+use tracing::{Instrument, Level};
 use uuid::Uuid;
 
 /// Describes an error that may or may not result in the termination of a connection.
@@ -115,7 +116,7 @@ impl<E: Engine> Connection<E> {
 				match framed.next().await.ok_or(ConnectionError::ConnectionClosed)?? {
 					ClientMessage::Startup(_startup) => {
 						// do startup stuff
-						// tracing::debug!("startup {:?}", startup);
+						// tracing::debug!(connection_id = %self.id, "startup {:?}", startup);
 					}
 					ClientMessage::SSLRequest => {
 						// we don't support SSL for now
@@ -151,17 +152,20 @@ impl<E: Engine> Connection<E> {
 			ConnectionState::Idle => {
 				match framed.next().await.ok_or(ConnectionError::ConnectionClosed)?? {
 					ClientMessage::Parse(parse) => {
-						tracing::debug!("Connection.Parse {}", self.id);
+						tracing::debug!(connection_id = %self.id, "Connection.Parse");
+						let span = tracing::span!(Level::INFO, "Connection.Parse", connection_id = %self.id);
 
 						let parsed_statement = self.parse_statement(&parse.query)?;
 
-						tracing::debug!("Statement {} {:?}", self.id, parsed_statement);
+						tracing::debug!(connection_id = %self.id, "Connection.Parse Statement {:?}", parsed_statement);
 
 						if let Some(statement) = &parsed_statement {
-							tracing::debug!("Preparing Statement Engine {}", self.id);
+							tracing::debug!(connection_id = %self.id, "Connection.Parse Engine.Prepare");
+
 							let statement_description = self
 								.engine
 								.prepare(&parse.prepared_statement_name, statement, parse.parameter_types)
+								.instrument(span)
 								.await?;
 
 							let prepared_statement = PreparedStatement {
@@ -177,7 +181,8 @@ impl<E: Engine> Connection<E> {
 						framed.send(ParseComplete).await?;
 					}
 					ClientMessage::Bind(bind) => {
-						tracing::debug!("Connection.Bind {}", self.id);
+						tracing::debug!(connection_id = %self.id, "Connection.Bind");
+						let span = tracing::span!(Level::INFO, "Connection.Parse", connection_id = %self.id);
 
 						let format_code = match bind.result_format {
 							BindFormat::All(format) => format,
@@ -190,7 +195,7 @@ impl<E: Engine> Connection<E> {
 							}
 						};
 
-						tracing::debug!("Binding FormatCode {} {:?}", self.id, &format_code);
+						tracing::debug!(connection_id = %self.id, "FormatCode {:?}",  &format_code);
 
 						let prepared = self.prepared_statement(&bind.prepared_statement_name)?.clone();
 
@@ -211,8 +216,7 @@ impl<E: Engine> Connection<E> {
 									.into());
 								}
 
-								tracing::debug!("Parameters {} {:?}", self.id, &binding);
-								// tracing::debug!("Parameters {} {:?}", self.id, parsed_statement);
+								tracing::debug!(connection_id = %self.id, "Parameters {:?}", &binding);
 
 								let portal = self
 									.engine
@@ -223,6 +227,7 @@ impl<E: Engine> Connection<E> {
 										binding,
 										format_code,
 									)
+									.instrument(span)
 									.await?;
 
 								let row_desc = RowDescription {
@@ -236,15 +241,16 @@ impl<E: Engine> Connection<E> {
 						};
 
 						if portal.is_none() {
-							tracing::warn!("Connection.Bind {} Portal=None", self.id);
+							tracing::warn!(connection_id = %self.id, "Connection.Bind No Portal");
 						}
 
 						self.portals.insert(bind.portal, portal);
-						tracing::debug!("Connection.BindComplete {}", self.id);
+						tracing::debug!(connection_id = %self.id, "Connection.BindComplete");
 						framed.send(BindComplete).await?;
 					}
 					ClientMessage::Describe(Describe::PreparedStatement(ref statement_name)) => {
-						tracing::debug!("Connection.DescribePreparedStatement {}", self.id);
+						tracing::debug!(connection_id = %self.id, "Connection.DescribePreparedStatement");
+						let _span = tracing::span!(Level::INFO, "Connection.DescribePreparedStatement", connection_id = %self.id);
 
 						let prepared_statement = self.prepared_statement(statement_name)?;
 
@@ -260,23 +266,31 @@ impl<E: Engine> Connection<E> {
 							})
 							.await?;
 					}
-					ClientMessage::Describe(Describe::Portal(ref portal_name)) => match self.portal(portal_name)? {
-						Some(portal) => {
-							tracing::debug!("Connection.DescribePortal {}", self.id);
-							tracing::debug!("Portal Name {:?}", portal_name);
-							framed.send(portal.row_desc.clone()).await?;
+					ClientMessage::Describe(Describe::Portal(ref portal_name)) => {
+						tracing::debug!(connection_id = %self.id, "Connection.DescribePortal");
+						let _span = tracing::span!(Level::INFO, "Connection.DescribePortal", connection_id = %self.id);
+
+						match self.portal(portal_name)? {
+							Some(portal) => {
+								tracing::debug!(connection_id = %self.id, "Connection.DescribePortal {:?}", portal_name);
+								framed.send(portal.row_desc.clone()).await?;
+							}
+							None => {
+								tracing::debug!(connection_id = %self.id, "Connection.DescribePortal NoData");
+								framed.send(NoData).await?;
+							}
 						}
-						None => {
-							tracing::debug!("Connection.DescribePortal NoData {}", self.id);
-							framed.send(NoData).await?;
-						}
-					},
+					}
 					ClientMessage::Sync => {
-						tracing::debug!("Connection.Sync {}", self.id);
+						tracing::debug!(connection_id = %self.id, "Connection.Sync");
 						framed.send(ReadyForQuery).await?;
 					}
 					ClientMessage::Execute(exec) => {
-						tracing::debug!("Connection.Execute {}", self.id);
+						let connection_id = self.id;
+						tracing::debug!(connection_id = %connection_id, "Connection.Execute");
+						let span =
+							tracing::span!(tracing::Level::INFO, "Connection.Execute", connection_id = %connection_id);
+
 						match self.portal_mut(&exec.portal)? {
 							Some(bound) => {
 								let mut batch_writer = DataRowBatch::from_row_desc(&bound.row_desc);
@@ -295,19 +309,20 @@ impl<E: Engine> Connection<E> {
 									.await?;
 							}
 							None => {
-								tracing::debug!("Connection.Portal.None");
+								tracing::debug!(connection_id = %connection_id, "Connection.Portal.None");
 								framed.send(EmptyQueryResponse).await?;
 							}
 						}
 					}
 					ClientMessage::Query(query) => {
-						tracing::debug!("Connection.Query {}", self.id);
+						tracing::debug!(connection_id = %self.id, "Connection.Query");
+						let span = tracing::span!(tracing::Level::INFO, "Connection.Query", connection_id = %self.id);
 
 						if let Some(parsed) = self.parse_statement(&query)? {
 							let format_code = FormatCode::Text;
 							let mut batch_writer = DataRowBatch::new(format_code);
 
-							let fields = self.engine.query(&parsed, &mut batch_writer).await?;
+							let fields = self.engine.query(&parsed, &mut batch_writer).instrument(span).await?;
 							let num_rows = batch_writer.num_rows();
 
 							let row_desc = RowDescription { fields, format_code };
@@ -327,11 +342,11 @@ impl<E: Engine> Connection<E> {
 					}
 					ClientMessage::Terminate => return Ok(None),
 					ClientMessage::Close(Close::Portal(ref _portal_name)) => {
-						tracing::debug!("Connection.ClosePortal");
+						tracing::debug!(connection_id = %self.id, "Connection.ClosePortal");
 						// TODO
 					}
 					ClientMessage::Close(Close::PreparedStatement(ref _statement_name)) => {
-						tracing::debug!("Connection.ClosePreparedStatement");
+						tracing::debug!(connection_id = %self.id, "Connection.ClosePreparedStatement");
 						// TODO
 					}
 					_ => return Err(ErrorResponse::error(SqlState::ProtocolViolation, "unexpected message").into()),
@@ -360,7 +375,7 @@ impl<E: Engine> Connection<E> {
 						return Err(err.into());
 					}
 
-					tracing::info!("Connection::ReadyForQuery {}", self.id);
+					tracing::info!("Connection::ReadyForQuery");
 
 					framed.send(ReadyForQuery).await?;
 					ConnectionState::Idle
