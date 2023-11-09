@@ -11,6 +11,7 @@ use std::collections::HashMap;
 // use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
+use uuid::Uuid;
 
 /// Describes an error that may or may not result in the termination of a connection.
 #[derive(thiserror::Error, Debug)]
@@ -51,23 +52,18 @@ struct BoundPortal<E: Engine> {
 /// Describes a connection using a specific engine.
 /// Contains connection state including prepared statements and portals.
 pub struct Connection<E: Engine> {
-	id: String,
+	pub id: Uuid,
 	engine: E,
 	state: ConnectionState,
 	statements: HashMap<String, PreparedStatement>,
 	portals: HashMap<String, Option<BoundPortal<E>>>,
 }
 
-fn id() -> String {
-	use rand::distributions::{Alphanumeric, DistString};
-	Alphanumeric.sample_string(&mut rand::thread_rng(), 24).to_lowercase()
-}
-
 impl<E: Engine> Connection<E> {
 	/// Create a new connection from an engine instance.
 	pub fn new(engine: E) -> Self {
 		Self {
-			id: id(),
+			id: Uuid::new_v4(),
 			state: ConnectionState::Startup,
 			statements: HashMap::new(),
 			portals: HashMap::new(),
