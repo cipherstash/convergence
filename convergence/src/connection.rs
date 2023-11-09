@@ -8,7 +8,6 @@ use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
-// use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
 use tracing::{Instrument, Level};
@@ -206,7 +205,6 @@ impl<E: Engine> Connection<E> {
 							Some(statement) => {
 								let params = prepared.parameters;
 								let binding = bind.parameters;
-								// let format = bind.result_format;
 
 								if binding.len() != params.len() {
 									return Err(ErrorResponse::error(
