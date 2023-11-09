@@ -39,6 +39,7 @@ enum ConnectionState {
 #[derive(Debug, Clone)]
 /// Wraps Parsed Statement and associated metadata
 pub struct PreparedStatement {
+	query: String,
 	pub statement: Option<Statement>,
 	pub fields: Vec<FieldDescription>,
 	pub parameters: Vec<DataTypeOid>,
@@ -48,6 +49,7 @@ pub struct PreparedStatement {
 struct BoundPortal<E: Engine> {
 	pub portal: E::PortalType,
 	pub row_desc: RowDescription,
+	pub query: String,
 }
 
 /// Describes a connection using a specific engine.
@@ -169,6 +171,7 @@ impl<E: Engine> Connection<E> {
 								.await?;
 
 							let prepared_statement = PreparedStatement {
+								query: parse.query.to_owned(),
 								statement: parsed_statement,
 								parameters: statement_description.parameters.unwrap_or(vec![]),
 								fields: statement_description.fields.unwrap_or(vec![]),
@@ -234,8 +237,12 @@ impl<E: Engine> Connection<E> {
 									fields: prepared.fields.clone(),
 									format_code,
 								};
-
-								Some(BoundPortal { portal, row_desc })
+								let query = prepared.query;
+								Some(BoundPortal {
+									portal,
+									row_desc,
+									query,
+								})
 							}
 							None => None,
 						};
@@ -295,8 +302,8 @@ impl<E: Engine> Connection<E> {
 							Some(bound) => {
 								let mut batch_writer = DataRowBatch::from_row_desc(&bound.row_desc);
 
-								tracing::debug!("Connection.Portal.Execute");
-								bound.portal.execute(&mut batch_writer).await?;
+								tracing::info!(parent: &span, "{}", bound.query);
+								bound.portal.execute(&mut batch_writer).instrument(span).await?;
 
 								let num_rows = batch_writer.num_rows();
 
