@@ -8,7 +8,6 @@ use sqlparser::ast::Statement;
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 use std::collections::HashMap;
-// use std::fmt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::Framed;
 
@@ -37,7 +36,8 @@ enum ConnectionState {
 #[derive(Debug, Clone)]
 /// Wraps Parsed Statement and associated metadata
 pub struct PreparedStatement {
-	pub statement: Option<Statement>,
+	pub query: String,
+	// pub statement: Statement,
 	pub fields: Vec<FieldDescription>,
 	pub parameters: Vec<DataTypeOid>,
 }
@@ -55,7 +55,7 @@ pub struct Connection<E: Engine> {
 	engine: E,
 	state: ConnectionState,
 	statements: HashMap<String, PreparedStatement>,
-	portals: HashMap<String, Option<BoundPortal<E>>>,
+	portals: HashMap<String, BoundPortal<E>>,
 }
 
 fn id() -> String {
@@ -64,7 +64,6 @@ fn id() -> String {
 }
 
 impl<E: Engine> Connection<E> {
-	/// Create a new connection from an engine instance.
 	pub fn new(engine: E) -> Self {
 		Self {
 			id: id(),
@@ -82,14 +81,14 @@ impl<E: Engine> Connection<E> {
 			.ok_or_else(|| ErrorResponse::error(SqlState::InvalidSQLStatementName, "missing statement"))?)
 	}
 
-	fn portal(&self, name: &str) -> Result<&Option<BoundPortal<E>>, ConnectionError> {
+	fn portal(&self, name: &str) -> Result<&BoundPortal<E>, ConnectionError> {
 		Ok(self
 			.portals
 			.get(name)
 			.ok_or_else(|| ErrorResponse::error(SqlState::InvalidCursorName, "missing portal"))?)
 	}
 
-	fn portal_mut(&mut self, name: &str) -> Result<&mut Option<BoundPortal<E>>, ConnectionError> {
+	fn portal_mut(&mut self, name: &str) -> Result<&mut BoundPortal<E>, ConnectionError> {
 		Ok(self
 			.portals
 			.get_mut(name)
@@ -157,95 +156,74 @@ impl<E: Engine> Connection<E> {
 					ClientMessage::Parse(parse) => {
 						tracing::debug!("Connection.Parse {}", self.id);
 
-						let parsed_statement = self.parse_statement(&parse.query)?;
+						// let query = &parse.query;
+						let statement = self.parse_statement(&parse.query)?;
 
-						tracing::debug!("Statement {} {:?}", self.id, parsed_statement);
+						tracing::debug!(connection_id = %self.id, "Connection.Parse Statement {:?}", statement);
 
-						if let Some(statement) = &parsed_statement {
-							tracing::debug!("Preparing Statement Engine {}", self.id);
-							let statement_description = self
-								.engine
-								.prepare(&parse.prepared_statement_name, statement, parse.parameter_types)
-								.await?;
+						if let Some(statement) = &statement {
+							tracing::debug!(connection_id = %self.id, "Connection.Parse Engine.Prepare");
 
-							let prepared_statement = PreparedStatement {
-								statement: parsed_statement,
-								parameters: statement_description.parameters.unwrap_or(vec![]),
-								fields: statement_description.fields.unwrap_or(vec![]),
-							};
+							let name = parse.prepared_statement_name;
+							let prepared_statement = self.engine.prepare(&name, statement, parse.parameters).await?;
 
-							self.statements
-								.insert(parse.prepared_statement_name, prepared_statement);
+							self.statements.insert(name, prepared_statement);
 						}
 
 						framed.send(ParseComplete).await?;
 					}
 					ClientMessage::Bind(bind) => {
 						tracing::debug!("Connection.Bind {}", self.id);
+						let name = bind.prepared_statement_name;
 
-						let format_code = match bind.result_format {
-							BindFormat::All(format) => format,
-							BindFormat::PerColumn(_) => {
-								return Err(ErrorResponse::error(
-									SqlState::FeatureNotSupported,
-									"per-column format codes not supported",
-								)
-								.into());
-							}
-						};
-
-						tracing::debug!("Binding FormatCode {} {:?}", self.id, &format_code);
-
-						let prepared = self.prepared_statement(&bind.prepared_statement_name)?.clone();
-
-						let portal = match prepared.statement {
-							Some(statement) => {
-								let params = prepared.parameters;
+						match self.prepared_statement(&name) {
+							Ok(statement) => {
+								let statement = statement.clone();
+								let params = statement.parameters.clone();
 								let binding = bind.parameters;
-								// let format = bind.result_format;
+
+								tracing::debug!("Connection.Bind Parameters {} {:?}", self.id, &params);
+								tracing::debug!("Connection.Bind Input {} {:?}", self.id, &binding);
 
 								if binding.len() != params.len() {
 									return Err(ErrorResponse::error(
 										SqlState::SyntaxError,
-										format!(
-											"wrong number of parameters for prepared statement {}",
-											bind.prepared_statement_name
-										),
+										format!("wrong number of parameters for prepared statement {}", &name),
 									)
 									.into());
 								}
 
-								tracing::debug!("Parameters {} {:?}", self.id, &binding);
-								// tracing::debug!("Parameters {} {:?}", self.id, parsed_statement);
+								let format_code = match bind.result_format {
+									BindFormat::All(format) => format,
+									BindFormat::PerColumn(_) => {
+										return Err(ErrorResponse::error(
+											SqlState::FeatureNotSupported,
+											"per-column format codes not supported",
+										)
+										.into());
+									}
+								};
 
-								let portal = self
-									.engine
-									.create_portal(
-										&bind.prepared_statement_name,
-										&statement,
-										params,
-										binding,
-										format_code,
-									)
-									.await?;
+								tracing::debug!("Connection.Bind FormatCode {} {:?}", self.id, &format_code);
+								// let name = bind.prepared_statement_name;
+								let portal = self.engine.create_portal(&name, binding).await?;
 
 								let row_desc = RowDescription {
-									fields: prepared.fields.clone(),
+									fields: statement.fields.clone(),
 									format_code,
 								};
 
-								Some(BoundPortal { portal, row_desc })
+								let portal = BoundPortal { portal, row_desc };
+								self.portals.insert(bind.portal, portal);
+
+								framed.send(BindComplete).await?;
 							}
-							None => None,
-						};
-
-						if portal.is_none() {
-							tracing::warn!("Connection.Bind {} Portal=None", self.id);
+							Err(err) => {
+								// let name = bind.prepared_statement_name.to_string();
+								tracing::error!("Connection.Bind {} InvalidSQLStatementName {}", self.id, &name);
+								return Err(err.into());
+							}
 						}
-
-						self.portals.insert(bind.portal, portal);
-						tracing::debug!("Connection.BindComplete {}", self.id);
-						framed.send(BindComplete).await?;
 					}
 					ClientMessage::Describe(Describe::PreparedStatement(ref statement_name)) => {
 						tracing::debug!("Connection.DescribePreparedStatement {}", self.id);
@@ -264,26 +242,29 @@ impl<E: Engine> Connection<E> {
 							})
 							.await?;
 					}
-					ClientMessage::Describe(Describe::Portal(ref portal_name)) => match self.portal(portal_name)? {
-						Some(portal) => {
-							tracing::debug!("Connection.DescribePortal {}", self.id);
-							tracing::debug!("Portal Name {:?}", portal_name);
-							framed.send(portal.row_desc.clone()).await?;
+					ClientMessage::Describe(Describe::Portal(ref name)) => {
+						tracing::debug!("Connection.DescribePortal {}", self.id);
+						match self.portal(name) {
+							Ok(portal) => {
+								tracing::debug!("Connection.DescribePortal {:?}", &name);
+								framed.send(portal.row_desc.clone()).await?;
+							}
+							Err(err) => {
+								tracing::error!("Connection.DescribePortal {} InvalidCursorName {}", self.id, &name);
+								return Err(err.into());
+							}
 						}
-						None => {
-							tracing::debug!("Connection.DescribePortal NoData {}", self.id);
-							framed.send(NoData).await?;
-						}
-					},
+					}
 					ClientMessage::Sync => {
 						tracing::debug!("Connection.Sync {}", self.id);
 						framed.send(ReadyForQuery).await?;
 					}
 					ClientMessage::Execute(exec) => {
 						tracing::debug!("Connection.Execute {}", &self.id);
+						let name = &exec.portal;
 
-						match self.portal_mut(&exec.portal)? {
-							Some(bound) => {
+						match self.portal_mut(name) {
+							Ok(bound) => {
 								let mut batch_writer = DataRowBatch::from_row_desc(&bound.row_desc);
 
 								bound.portal.execute(&mut batch_writer).await?;
@@ -298,9 +279,9 @@ impl<E: Engine> Connection<E> {
 									})
 									.await?;
 							}
-							None => {
-								tracing::debug!("Connection.Portal.None {}", &self.id);
-								framed.send(EmptyQueryResponse).await?;
+							Err(err) => {
+								tracing::error!("Connection.DescribePortal {} InvalidCursorName {}", self.id, &name);
+								return Err(err.into());
 							}
 						}
 					}
