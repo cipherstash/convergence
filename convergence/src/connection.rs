@@ -221,7 +221,7 @@ impl<E: Engine> Connection<E> {
 							Err(err) => {
 								// let name = bind.prepared_statement_name.to_string();
 								tracing::error!("Connection.Bind {} InvalidSQLStatementName {}", self.id, &name);
-								return Err(err.into());
+								return Err(err);
 							}
 						}
 					}
@@ -251,7 +251,7 @@ impl<E: Engine> Connection<E> {
 							}
 							Err(err) => {
 								tracing::error!("Connection.DescribePortal {} InvalidCursorName {}", self.id, &name);
-								return Err(err.into());
+								return Err(err);
 							}
 						}
 					}
@@ -281,7 +281,7 @@ impl<E: Engine> Connection<E> {
 							}
 							Err(err) => {
 								tracing::error!("Connection.DescribePortal {} InvalidCursorName {}", self.id, &name);
-								return Err(err.into());
+								return Err(err);
 							}
 						}
 					}
