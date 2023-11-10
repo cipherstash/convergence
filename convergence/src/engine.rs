@@ -1,5 +1,6 @@
 //! Contains core interface definitions for custom SQL engines.
-use crate::protocol::{DataTypeOid, ErrorResponse, FieldDescription, FormatCode, StatementDescription};
+use crate::connection::PreparedStatement;
+use crate::protocol::{DataTypeOid, ErrorResponse, FieldDescription};
 use crate::protocol_ext::DataRowBatch;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -27,25 +28,19 @@ pub trait Engine: Send + Sync + 'static {
 	// async fn prepare(&mut self, stmt: &Statement) -> Result<Vec<FieldDescription>, ErrorResponse>;
 	async fn prepare(
 		&mut self,
-		stmt_name: &str,
-		stmt: &Statement,
-		parameter_types: Vec<DataTypeOid>,
-	) -> Result<StatementDescription, ErrorResponse>;
+		name: &String,
+		statement: &Statement,
+		param_types: Vec<DataTypeOid>,
+	) -> Result<PreparedStatement, ErrorResponse>;
 
 	/// Creates a new portal for a prepared statement and passings params for decoding.
 	async fn create_portal(
 		&mut self,
-		stmt_name: &str,
-		stmt: &Statement,
-		params: Vec<DataTypeOid>,
+		name: &String,
+		// statement: &PreparedStatement,
 		binding: Vec<Bytes>,
-		format: FormatCode,
 	) -> Result<Self::PortalType, ErrorResponse>;
 
 	/// Queries directly without setting up a portal
-	async fn query(
-		&mut self,
-		stmt: &Statement,
-		batch: &mut DataRowBatch,
-	) -> Result<Vec<FieldDescription>, ErrorResponse>;
+	async fn query(&self, stmt: &Statement, batch: &mut DataRowBatch) -> Result<Vec<FieldDescription>, ErrorResponse>;
 }
