@@ -293,7 +293,7 @@ pub enum Describe {
 pub struct Parse {
 	pub prepared_statement_name: String,
 	pub query: String,
-	pub parameter_types: Vec<DataTypeOid>,
+	pub parameters: Vec<DataTypeOid>,
 }
 
 #[derive(Debug)]
@@ -433,12 +433,6 @@ impl BackendMessage for ErrorResponse {
 
 		dst.put_u8(0); // tag
 	}
-}
-
-#[derive(Debug, Clone)]
-pub struct StatementDescription {
-	pub fields: Option<Vec<FieldDescription>>,
-	pub parameters: Option<Vec<DataTypeOid>>,
 }
 
 // From https://www.postgresql.org/docs/current/protocol-message-formats.html
@@ -794,12 +788,12 @@ impl Decoder for ConnectionCodec {
 					src.get_i16()
 				};
 
-				let params: Vec<DataTypeOid> = (0..num_params).map(|_| DataTypeOid::from(src.get_u32())).collect();
+				let parameters: Vec<DataTypeOid> = (0..num_params).map(|_| DataTypeOid::from(src.get_u32())).collect();
 
 				ClientMessage::Parse(Parse {
 					prepared_statement_name,
 					query,
-					parameter_types: params,
+					parameters,
 				})
 			}
 			b'D' => {
