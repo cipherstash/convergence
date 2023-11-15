@@ -34,6 +34,15 @@ impl ToWire for &str {
 	}
 }
 
+impl ToWire for String {
+	fn to_binary(&self) -> Vec<u8> {
+		<&str as ToWire>::to_binary(&&**self)
+	}
+	fn to_text(&self) -> Vec<u8> {
+		<&str as ToWire>::to_text(&&**self)
+	}
+}
+
 fn pg_date_epoch() -> NaiveDate {
 	NaiveDate::from_ymd_opt(2000, 1, 1).expect("failed to create pg date epoch")
 }
