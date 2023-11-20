@@ -101,6 +101,17 @@ impl ToWire for Decimal {
 	}
 }
 
+impl ToWire for uuid::Uuid {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::UUID, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		self.to_string().as_bytes().into()
+	}
+}
+
 macro_rules! to_wire {
 	($type: ident) => {
 		#[allow(missing_docs)]
