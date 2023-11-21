@@ -256,6 +256,71 @@ mod tests {
 		assert_eq!(from_binary, val);
 	}
 
+	#[test]
+	pub fn test_int2_array() {
+		let val: Vec<i16> = vec![1024, 2048, 1234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1024,2048,1234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<i16>::from_sql(&Type::INT2_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_int4_array() {
+		let val: Vec<i32> = vec![1024, 2048, 1234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1024,2048,1234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<i32>::from_sql(&Type::INT4_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_int8_array() {
+		let val: Vec<i32> = vec![1024, 2048, 1234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1024,2048,1234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<i32>::from_sql(&Type::INT8_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_float4_array() {
+		let val: Vec<f32> = vec![1.024, 2.048, 1.234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1.024,2.048,1.234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<f32>::from_sql(&Type::FLOAT4_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_float8_array() {
+		let val: Vec<f64> = vec![1.024, 2.048, 1.234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1.024,2.048,1.234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<f64>::from_sql(&Type::FLOAT8_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
 	macro_rules! test_to_wire {
 		($name: ident, $type: ident) => {
 			#[test]
