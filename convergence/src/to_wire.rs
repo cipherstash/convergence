@@ -110,6 +110,71 @@ impl ToWire for uuid::Uuid {
 	}
 }
 
+impl ToWire for Vec<i16> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::INT2_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<i32> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::INT4_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<i64> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::INT8_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<f32> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::FLOAT4_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<f64> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::FLOAT8_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
 macro_rules! to_wire {
 	($type: ident) => {
 		#[allow(missing_docs)]
