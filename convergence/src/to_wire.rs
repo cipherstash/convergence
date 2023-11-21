@@ -138,6 +138,7 @@ to_wire!(f64);
 mod tests {
 	use bytes::{BufMut, BytesMut};
 	use chrono::NaiveDateTime;
+	use postgres_types::{FromSql, Type};
 	use rand::Rng;
 	use std::{convert::TryInto, mem};
 
@@ -175,6 +176,19 @@ mod tests {
 		let out = String::from_utf8(out).unwrap();
 
 		assert_eq!(expected, out);
+	}
+
+	#[test]
+	pub fn test_uuid() {
+		let val = uuid::uuid!("9f398883-76cb-474b-b95b-877b8f7c5a27");
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "9f398883-76cb-474b-b95b-877b8f7c5a27";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = uuid::Uuid::from_sql(&Type::UUID, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
 	}
 
 	macro_rules! test_to_wire {
