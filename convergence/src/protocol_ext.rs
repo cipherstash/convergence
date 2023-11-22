@@ -49,6 +49,10 @@ impl DataRowBatch {
 		DataRowWriter::new(self)
 	}
 
+	pub fn format_code(&self) -> FormatCode {
+		self.format_code
+	}
+
 	/// Specify the number of columns
 	/// Allows for column count to be changed after creation.
 	/// Here be dragons, if you have started writing data you will have a terrible time.

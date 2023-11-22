@@ -272,7 +272,7 @@ impl<E: Engine> Connection<E> {
 						framed
 							.send(RowDescription {
 								fields,
-								format_code: FormatCode::Text,
+								format_code: FormatCode::Text, //Always Zero as per spec
 							})
 							.await?;
 					}
