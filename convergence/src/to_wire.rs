@@ -110,6 +110,71 @@ impl ToWire for uuid::Uuid {
 	}
 }
 
+impl ToWire for Vec<i16> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::INT2_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<i32> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::INT4_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<i64> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::INT8_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<f32> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::FLOAT4_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
+impl ToWire for Vec<f64> {
+	fn to_binary(&self) -> Vec<u8> {
+		let mut b = BytesMut::new();
+		self.to_sql(&postgres_types::Type::FLOAT8_ARRAY, &mut b).unwrap();
+		b.into()
+	}
+	fn to_text(&self) -> Vec<u8> {
+		let s: Vec<String> = self.iter().map(|v| v.to_string()).collect();
+		let s = format!("{{{}}}", s.join(","));
+		s.to_string().as_bytes().into()
+	}
+}
+
 macro_rules! to_wire {
 	($type: ident) => {
 		#[allow(missing_docs)]
@@ -188,6 +253,71 @@ mod tests {
 		assert_eq!(from_text, expected_from_text);
 
 		let from_binary = uuid::Uuid::from_sql(&Type::UUID, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_int2_array() {
+		let val: Vec<i16> = vec![1024, 2048, 1234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1024,2048,1234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<i16>::from_sql(&Type::INT2_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_int4_array() {
+		let val: Vec<i32> = vec![1024, 2048, 1234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1024,2048,1234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<i32>::from_sql(&Type::INT4_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_int8_array() {
+		let val: Vec<i32> = vec![1024, 2048, 1234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1024,2048,1234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<i32>::from_sql(&Type::INT8_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_float4_array() {
+		let val: Vec<f32> = vec![1.024, 2.048, 1.234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1.024,2.048,1.234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<f32>::from_sql(&Type::FLOAT4_ARRAY, &val.to_binary()).unwrap();
+		assert_eq!(from_binary, val);
+	}
+
+	#[test]
+	pub fn test_float8_array() {
+		let val: Vec<f64> = vec![1.024, 2.048, 1.234];
+
+		let as_text = val.to_text();
+		let from_text = String::from_utf8(as_text).unwrap();
+		let expected_from_text = "{1.024,2.048,1.234}";
+		assert_eq!(from_text, expected_from_text);
+
+		let from_binary = Vec::<f64>::from_sql(&Type::FLOAT8_ARRAY, &val.to_binary()).unwrap();
 		assert_eq!(from_binary, val);
 	}
 
