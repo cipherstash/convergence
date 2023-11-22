@@ -159,15 +159,15 @@ impl<E: Engine> Connection<E> {
 
 						tracing::debug!("Preparing Statement Engine {}", self.id);
 
-						let statement_description = self
+						let prepared_statement = self
 							.engine
 							.prepare(&parse.prepared_statement_name, &parse.query, parse.parameter_types)
 							.await?;
 
 						let prepared_statement = PreparedStatement {
 							statement: parse.query.to_owned(),
-							parameters: statement_description.parameters.unwrap_or(vec![]),
-							fields: statement_description.fields.unwrap_or(vec![]),
+							parameters: prepared_statement.parameters,
+							fields: prepared_statement.fields,
 						};
 
 						self.statements

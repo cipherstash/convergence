@@ -436,12 +436,6 @@ impl BackendMessage for ErrorResponse {
 	}
 }
 
-#[derive(Debug, Clone)]
-pub struct StatementDescription {
-	pub fields: Option<Vec<FieldDescription>>,
-	pub parameters: Option<Vec<DataTypeOid>>,
-}
-
 // From https://www.postgresql.org/docs/current/protocol-message-formats.html
 
 // ParameterDescription (B)
